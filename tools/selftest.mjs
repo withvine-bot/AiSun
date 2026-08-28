@@ -45,6 +45,26 @@ const deck = AiSun.curriculum.deck;
 ok(deck.all.length > 900, `카드 덱 ${deck.all.length}장 생성`);
 ok(deck.all.length === new Set(deck.all.map((c) => c.id)).size, '카드 id 중복 없음');
 
+console.log('\n■ 급수 체계');
+const byLv = {};
+for (const h of AISUN_DATA.hanja) byLv[h.lv] = (byLv[h.lv] || 0) + 1;
+ok(AISUN_DATA.hanja.length === 3500, `배정한자 3,500자 (${AISUN_DATA.hanja.length})`);
+const CUM = { '8': 50, '7II': 100, '7': 150, '6II': 225, '6': 300, '5II': 400, '5': 500,
+  '4II': 750, '4': 1000, '3II': 1500, '3': 1817, '2': 2355, '1': 3500 };
+let run = 0, cumOk = true, cumMsg = '';
+for (const lv of AiSun.LEVELS) {
+  run += byLv[lv] || 0;
+  if (run !== CUM[lv]) { cumOk = false; cumMsg = `${lv}급 누계 ${run} ≠ ${CUM[lv]}`; break; }
+}
+ok(cumOk, '급수별 누계가 한국어문회 공식 배정과 일치 (3급 1,817 / 2급 2,355 / 1급 3,500)', cumMsg);
+const wt = AISUN_DATA.hanja.filter((h) => h.wtier === 1).length;
+ok(wt === 1817, `쓰기 확정 대상 1,817자 = 3급까지 누계 (${wt})`);
+ok(AISUN_DATA.hanja.filter((h) => h.wtier === 2).length === 538, '쓰기 확장 대상 538자 = 2급');
+ok(AISUN_DATA.hanja.every((h) => h.rad), '전 한자에 부수 수록');
+ok(AISUN_DATA.hanja.every((h) => h.str > 0), '전 한자에 총획 수록');
+const noWords = AISUN_DATA.hanja.filter((h) => !h.words.length).length;
+ok(noWords < 120, `대표 어휘가 없는 한자 ${noWords}자 (독음·쓰기 문항 재료 없음)`);
+
 console.log('\n■ 26주 커리큘럼');
 let assigned = 0;
 const seen = new Set();
@@ -56,7 +76,27 @@ for (let w = 1; w <= AiSun.curriculum.NEW_WEEKS; w++) {
     seen.add(c.id);
   }
 }
-ok(assigned === deck.all.length, `18주 배정 합계 ${assigned} = 덱 전체 ${deck.all.length}`);
+ok(assigned === AiSun.curriculum.assignable.length,
+  `18주 배정 합계 ${assigned} = 배정 대상 ${AiSun.curriculum.assignable.length} (덱 전체 ${deck.all.length})`);
+
+console.log('\n■ 기지 급수 건너뛰기');
+const loadNone = AiSun.curriculum.load('');
+const load4 = AiSun.curriculum.load('4');
+const load2 = AiSun.curriculum.load('2');
+ok(loadNone.total > load4.total && load4.total > load2.total,
+  `아는 급수가 높을수록 배정이 준다: 없음 ${loadNone.total} > 4급 ${load4.total} > 2급 ${load2.total}`);
+ok(loadNone.total === deck.all.length, `제외 없음이면 덱 전체와 같다 (${loadNone.total})`);
+AiSun.store.state.settings.knownLevel = '2';
+AiSun.curriculum.refresh();
+const skipped = AiSun.curriculum.assignable
+  .filter((c) => c.kind === 'hanja' && AiSun.curriculum.levelIdx(c.ref.lv) <= AiSun.curriculum.levelIdx('2'));
+ok(skipped.length === 0, '2급까지 안다고 설정하면 그 이하 한자는 배정되지 않는다');
+ok(AiSun.curriculum.assignable.every((c) => c.kind !== 'hanja' || c.ref.lv === '1'),
+  '남는 한자는 1급뿐');
+const stillDrillable = AiSun.quiz.byType('훈음', 20, { rand: AiSun.util.rng('skip') });
+ok(stillDrillable.length === 20, '제외한 급수도 드릴·모의고사 출제 범위에는 남는다');
+AiSun.store.state.settings.knownLevel = '4';
+AiSun.curriculum.refresh();
 ok(AiSun.curriculum.weekNew(19).length === 0, '19주차부터 신규 배정 없음');
 const w1 = AiSun.curriculum.weekSummary(1);
 ok(w1.writeCount > 0, `1주차에 쓰기 카드 ${w1.writeCount}장 포함 (1단계 설계대로)`);
@@ -98,6 +138,18 @@ for (const t of AiSun.TYPES) {
       && q.choices.filter((c) => AiSun.util.norm(c) === AiSun.util.norm(q.answer)).length === 1);
   ok(good, `${t.k}: ${qs.length}/${t.n}문항, 정답 정확히 1개 포함`,
     qs.length !== t.n ? '문항 수 부족' : '보기 구성 오류');
+}
+
+console.log('\n■ 훈음 대체 정답');
+{
+  const withAlts = AISUN_DATA.hanja.find((h) => h.alts && h.alts.length);
+  const card = deck.byId.get('h:' + withAlts.c + '#read');
+  const q = AiSun.quiz.make('훈음', card, AiSun.util.rng('alt'));
+  ok(AiSun.quiz.check(q, `${withAlts.hun} ${withAlts.eum}`), `대표훈 정답 인정 (${withAlts.c}: ${withAlts.hun} ${withAlts.eum})`);
+  ok(AiSun.quiz.check(q, withAlts.alts[0]), `통용훈도 정답 인정 (${withAlts.alts[0]})`);
+  ok(!AiSun.quiz.check(q, '아무말 앙'), '틀린 답은 인정하지 않음');
+  ok(AISUN_DATA.hanja.filter((h) => h.alts && h.alts.length).length > 1000,
+    `통용훈이 수록된 한자 ${AISUN_DATA.hanja.filter((h) => h.alts && h.alts.length).length}자`);
 }
 
 console.log('\n■ 모의고사');

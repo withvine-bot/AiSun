@@ -34,12 +34,12 @@
   const PHASES = AiSun.PHASES = [
     {
       no: 1, name: '기반 다지기', from: 1, to: 8,
-      goal: '쓰기 배정한자를 읽기·쓰기 동시에 고정한다',
-      detail: '배점이 가장 큰 漢字쓰기(40문항)의 토대다. 이 단계에서 쓰기 대상 한자를 손으로 쓰는 습관까지 함께 만든다.',
+      goal: '낮은 급수부터 읽기·쓰기를 동시에 고정한다',
+      detail: '이 구간의 한자는 대부분 쓰기 배정 대상이다. 배점이 가장 큰 漢字쓰기(40문항)의 토대이므로, 눈으로 보지 말고 손으로 쓰는 습관을 여기서 만든다.',
     },
     {
       no: 2, name: '1급 확장', from: 9, to: 18,
-      goal: '1·2급 신출 한자와 성어를 전량 1회전한다',
+      goal: '2급·1급 신출 한자와 성어를 전량 1회전한다',
       detail: '신규 유입이 가장 많은 구간이다. 복습 부채가 쌓이지 않도록 매일 예약 복습을 먼저 끝내고 신규로 넘어간다.',
     },
     {
@@ -53,29 +53,31 @@
     return PHASES.find((p) => week >= p.from && week <= p.to) || PHASES[PHASES.length - 1];
   }
 
+  /* ── 급수 체계 ── 8급부터 1급까지 누계가 정확히 3,500자다 */
+  const LEVELS = AiSun.LEVELS = ['8', '7II', '7', '6II', '6', '5II', '5', '4II', '4', '3II', '3', '2', '1'];
+  const LEVEL_LABEL = AiSun.LEVEL_LABEL = {
+    '8': '8급', '7II': '7급Ⅱ', '7': '7급', '6II': '6급Ⅱ', '6': '6급', '5II': '5급Ⅱ', '5': '5급',
+    '4II': '4급Ⅱ', '4': '4급', '3II': '3급Ⅱ', '3': '3급', '2': '2급', '1': '1급',
+  };
+  const LEVEL_ORDER = Object.fromEntries(LEVELS.map((l, i) => [l, i]));
+  const levelIdx = (lv) => (lv in LEVEL_ORDER ? LEVEL_ORDER[lv] : LEVELS.length);
+
   /* ── 카드 덱 ──
    * 카드 = 간격반복의 최소 단위. 한자는 읽기/쓰기 두 트랙을 따로 스케줄한다.
    * (읽을 줄 아는 것과 쓸 줄 아는 것은 별개의 인출이므로 별개 카드로 둔다.)
    */
-  const LEVEL_ORDER = { '4': 0, '3II': 1, '3': 2, '2': 3, '1': 4 };
-
   function buildDeck(data) {
     const cards = [];
     const byId = new Map();
     const add = (c) => { cards.push(c); byId.set(c.id, c); return c; };
 
-    const hanja = data.hanja.slice().sort((a, b) => {
-      if (a.write !== b.write) return a.write ? -1 : 1;              // 쓰기 대상 먼저
-      const la = LEVEL_ORDER[a.lv] ?? 9, lb = LEVEL_ORDER[b.lv] ?? 9;
-      if (la !== lb) return la - lb;                                  // 쉬운 급수 먼저
-      return a.eum.localeCompare(b.eum, 'ko');
-    });
+    // 쉬운 급수부터. 쓰기 카드는 같은 글자의 읽기 카드 바로 뒤에 붙여 함께 배정되게 한다.
+    const hanja = data.hanja.slice().sort((a, b) =>
+      levelIdx(a.lv) - levelIdx(b.lv) || a.eum.localeCompare(b.eum, 'ko') || a.c.localeCompare(b.c));
 
-    // 1) 쓰기 대상 한자: 읽기 카드 + 쓰기 카드를 나란히 (= 1단계)
-    // 2) 나머지 한자: 읽기 카드만 (= 2단계)
     for (const h of hanja) {
-      add({ id: h.id + '#read', track: 'read', kind: 'hanja', ref: h, label: h.c, write: false });
-      if (h.write) add({ id: h.id + '#write', track: 'write', kind: 'hanja', ref: h, label: h.c, write: true });
+      add({ id: h.id + '#read', track: 'read', kind: 'hanja', ref: h, label: h.c, write: false, lv: h.lv });
+      if (h.write) add({ id: h.id + '#write', track: 'write', kind: 'hanja', ref: h, label: h.c, write: true, lv: h.lv });
     }
     const hanjaCards = cards.slice();
 
@@ -117,16 +119,47 @@
     WEEKS, NEW_WEEKS, TYPES, TOTAL_ITEMS, PASS_SCORE, PHASES,
     deck: null,
 
+    LEVELS, LEVEL_LABEL, levelIdx,
+
     init(data) {
       C.deck = buildDeck(data);
+      C.refresh();
       return C.deck;
+    },
+
+    /**
+     * 이미 아는 급수를 배정에서 뺀다.
+     * 1급 응시자에게 8급부터 3,500자를 다시 배정하는 건 시간 낭비다. 제외된 카드도
+     * 드릴과 모의고사 출제 범위에는 그대로 남으므로, 틀리면 오답노트를 통해 다시 들어온다.
+     */
+    refresh() {
+      const known = AiSun.store.state.settings.knownLevel || '';
+      const cut = known ? levelIdx(known) : -1;
+      const keep = (c) => c.kind !== 'hanja' || levelIdx(c.ref.lv) > cut;
+      const p = C.deck.pools;
+      C.pools = {
+        hanja: p.hanja.filter(keep),
+        idiom: p.idiom, pair: p.pair, homo: p.homo, abbr: p.abbr, tone: p.tone,
+      };
+      C.assignable = [].concat(C.pools.hanja, C.pools.idiom, C.pools.pair, C.pools.homo, C.pools.abbr, C.pools.tone);
+      return C.assignable;
+    },
+
+    /** 설정한 기지 급수에서 하루 몇 장을 새로 배워야 하는지 */
+    load(knownLevel) {
+      const cut = knownLevel ? levelIdx(knownLevel) : -1;
+      const d = C.deck;
+      const n = d.pools.hanja.filter((c) => levelIdx(c.ref.lv) > cut).length
+        + d.pools.idiom.length + d.pools.pair.length + d.pools.homo.length
+        + d.pools.abbr.length + d.pools.tone.length;
+      return { total: n, perWeek: Math.round(n / NEW_WEEKS), perDay: Math.round(n / NEW_WEEKS / STUDY_DOWS.length) };
     },
 
     phaseOf,
 
     /** 주차별 신규 배정 (카드 배열) */
     weekNew(week) {
-      const p = C.deck.pools;
+      const p = C.pools || C.deck.pools;
       if (week < 1 || week > NEW_WEEKS) return [];
       return [].concat(
         weekSlice(p.hanja, week),
@@ -242,9 +275,10 @@
 
     /** 진도율 — 덱 전체 중 학습을 시작한 카드 비율 */
     progress() {
-      const total = C.deck.all.length;
+      const pool = C.assignable || C.deck.all;
+      const total = pool.length;
       let started = 0, mature = 0;
-      for (const c of C.deck.all) {
+      for (const c of pool) {
         const s = AiSun.srs.get(c.id);
         if (s) { started += 1; if (s.ivl >= 21) mature += 1; }
       }

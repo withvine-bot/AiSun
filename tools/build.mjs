@@ -43,9 +43,11 @@ function parseWords(cell) {
 const num = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : null; };
 
 // ---------- 한자 ----------
+// 열 순서: char hun eum radical resid strokes level write tone variant words alts
 const hanja = [];
 const seenChar = new Set();
-for (const [c, hun, eum, rad, str, lv, write, tone, variant, words] of rows('hanja.tsv')) {
+for (const f of rows('hanja.tsv')) {
+  const [c, hun, eum, rad, resid, str, lv, write, tone, variant, words, alts] = f;
   if (!c) continue;
   if (seenChar.has(c)) { warn(`중복 한자: ${c}`); continue; }
   if (!hun || !eum) { warn(`훈음 누락: ${c}`); continue; }
@@ -54,12 +56,17 @@ for (const [c, hun, eum, rad, str, lv, write, tone, variant, words] of rows('han
     id: 'h:' + c,
     c, hun, eum,
     rad: rad || '',
-    str: num(str),
+    resid: num(resid),            // 부수를 뺀 획수
+    str: num(str),                // 총획
     lv: lv || '',
-    write: write === 'Y',
+    // 쓰기 등급 — 1: 3급 이상 누계(확정), 2: 2급(확장), 0: 1급(읽기 전용)
+    wtier: write === 'Y' ? 1 : write === '2' ? 2 : 0,
+    write: write === 'Y' || write === '2',
     tone: tone || '',
     variant: variant || '',
     words: parseWords(words),
+    // 채점 시 함께 인정할 훈음 (어문회 대표훈 외의 통용 훈)
+    alts: (alts || '').split(';').map((x) => x.trim()).filter(Boolean),
   });
 }
 
@@ -123,7 +130,8 @@ const data = {
     builtAt: new Date().toISOString().slice(0, 10),
     counts: {
       hanja: hanja.length,
-      hanjaWrite: hanja.filter((h) => h.write).length,
+      hanjaWrite: hanja.filter((h) => h.wtier === 1).length,
+      hanjaWriteExt: hanja.filter((h) => h.wtier === 2).length,
       idioms: idioms.length,
       pairs: pairs.length,
       homonyms: homonyms.length,
@@ -144,6 +152,11 @@ writeFileSync(
 
 console.log('생성:', OUT.replace(ROOT + '/', ''));
 console.table(data.meta.counts);
+const byLevel = {};
+for (const h of hanja) byLevel[h.lv] = (byLevel[h.lv] || 0) + 1;
+console.log('급수별:', ['8','7II','7','6II','6','5II','5','4II','4','3II','3','2','1']
+  .map((l) => `${l}급 ${byLevel[l] || 0}`).join(' · '));
+console.log(`어휘가 없는 한자 ${hanja.filter((h) => !h.words.length).length}자 (독음·쓰기 문항이 만들어지지 않음)`);
 // 참고 지표 — 성어 문항 자체는 hanja.tsv 수록 여부와 무관하게 만들어진다.
 console.log(`참고: 구성 한자가 모두 hanja.tsv 에도 수록된 성어 ${idiomCovered}/${idioms.length}개`);
 if (problems.length) {

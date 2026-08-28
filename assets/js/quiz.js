@@ -77,12 +77,14 @@
       if (card.kind !== 'hanja') return null;
       const h = card.ref;
       const ans = `${h.hun} ${h.eum}`;
+      // 어문회 대표훈이 정답이지만, 통용되는 다른 훈으로 답해도 실제 채점에서는 인정된다.
+      const accept = [ans, h.hun + h.eum].concat(h.alts || []);
       return {
         type: '훈음', cardId: card.id, mode: 'input',
         q: '다음 漢字의 訓과 音을 쓰시오.',
         stem: h.c,
         answer: ans,
-        accept: [ans, h.hun + h.eum],
+        accept,
         choices: choices(ans, IDX.hunEum.map((x) => x.t), rand),
         explain: `${h.c} : ${ans}${h.words[0] ? ' — 예) ' + h.words[0].w + '(' + h.words[0].r + ')' : ''}`,
       };

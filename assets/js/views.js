@@ -27,6 +27,8 @@
     { g: 3, t: '완벽', s: '길게 미룸' },
   ];
 
+  const lvLabel = (lv) => (AiSun.LEVEL_LABEL && AiSun.LEVEL_LABEL[lv]) || (lv + '급');
+
   /** 신규 카드의 학습면 — 문제를 내기 전에 먼저 보여 주는 정보 */
   const cardInfo = AiSun.cardInfo = function (card) {
     const r = card.ref;
@@ -34,7 +36,8 @@
       return `
         <div class="stem">${esc(r.c)}</div>
         <div class="hint" style="font-size:19px;color:var(--ink);margin-top:10px"><b>${esc(r.hun)} ${esc(r.eum)}</b></div>
-        <div class="hint">부수 <b>${esc(r.rad)}</b>${r.str ? ` · 총 ${r.str}획` : ''} · ${esc(r.lv)}급${r.variant ? ` · 약자 ${esc(r.variant)}` : ''}</div>
+        <div class="hint"><b>${esc(r.rad)}</b>부 ${r.resid != null ? r.resid + '획' : ''}${r.str ? ` · 총 ${r.str}획` : ''} · ${esc(lvLabel(r.lv))}${r.variant ? ` · 약자 ${esc(r.variant)}` : ''}</div>
+        ${r.alts && r.alts.length ? `<div class="hint">다른 훈: ${esc(r.alts.slice(0, 3).join(' / '))}</div>` : ''}
         ${card.track === 'write' ? '<div class="hint" style="color:var(--accent)">쓰기 배정 한자 — 반드시 손으로 세 번 써 보세요.</div>' : ''}
         ${r.words.length ? `<div class="reveal" style="text-align:center">${r.words.map((w) =>
           `<div><b style="font-family:var(--han);font-size:19px">${esc(w.w)}</b>
@@ -549,18 +552,26 @@
       <section>
         <h2>수록 데이터</h2>
         <div class="grid c4">
-          ${metric(counts.hanja, '한자')}
-          ${metric(counts.hanjaWrite, '쓰기 대상 한자')}
+          ${metric(counts.hanja.toLocaleString(), '배정한자 (8급~1급)')}
+          ${metric(counts.hanjaWrite.toLocaleString(), '쓰기 확정 (3급까지)')}
+          ${metric(counts.hanjaWriteExt, '쓰기 확장 (2급)')}
           ${metric(counts.idioms, '사자성어')}
           ${metric(counts.pairs, '유의·반의어')}
           ${metric(counts.homonyms, '동음이의어 묶음')}
           ${metric(counts.abbrev, '약자')}
           ${metric(counts.tone, '장단음 어휘')}
-          ${metric(AiSun.curriculum.deck.all.length, '학습 카드 총계')}
         </div>
-        <p class="note" style="margin-top:8px">배정한자 전량(3,500자)을 넣으려면
-          <span class="kbd">data/src/hanja.tsv</span>에 행을 추가하고 <span class="kbd">node tools/build.mjs</span>를 실행하세요.
-          주차별 배정량은 자동으로 다시 계산됩니다.</p>
+        <div class="card" style="margin-top:12px">
+          <div class="row"><b>학습 카드 ${AiSun.curriculum.deck.all.length.toLocaleString()}장</b>
+            <span style="color:var(--dim)">한자는 읽기·쓰기를 따로 셉니다</span>
+            <span class="spacer"></span>
+            <span class="chip">배정 대상 <b>${AiSun.curriculum.assignable.length.toLocaleString()}</b>장</span>
+            <span class="chip">하루 <b>${AiSun.curriculum.load(AiSun.store.state.settings.knownLevel).perDay}</b>장</span></div>
+          <p class="note">이미 아는 급수는 신규 배정에서 빠집니다(현재 설정:
+            <b>${esc(AiSun.store.state.settings.knownLevel ? lvLabel(AiSun.store.state.settings.knownLevel) + '까지 앎' : '제외 없음')}</b>).
+            제외된 한자도 드릴과 모의고사에는 그대로 나오므로, 잊고 있었다면 오답노트를 통해 다시 들어옵니다.
+            <b>설정</b>에서 바꿀 수 있습니다.</p>
+        </div>
       </section>
     `);
   };
@@ -914,6 +925,7 @@
     const D = AiSun.DATA;
     let tab = (location.hash.split('?')[1] || 'hanja');
     let q = '';
+    let lvFilter = '';
 
     function render() {
       const kinds = [['hanja', '한자'], ['idioms', '사자성어'], ['pairs', '유의·반의어'],
@@ -922,14 +934,19 @@
       const hit = (s) => !q || String(s).toLowerCase().includes(q.toLowerCase());
 
       if (tab === 'hanja') {
-        const list = D.hanja.filter((h) => hit(h.c) || hit(h.hun) || hit(h.eum) || hit(h.rad)
-          || h.words.some((w) => hit(w.w) || hit(w.r)));
-        body = `<p class="note">${list.length}자</p><div class="hanja-grid">${list.slice(0, 400).map((h) => `
+        const list = D.hanja.filter((h) => (!lvFilter || h.lv === lvFilter)
+          && (hit(h.c) || hit(h.hun) || hit(h.eum) || hit(h.rad) || h.words.some((w) => hit(w.w) || hit(w.r))));
+        body = `
+          <div class="row" style="margin-bottom:12px">
+            <button class="btn sm ${lvFilter ? '' : 'primary'}" data-lv="">전체</button>
+            ${AiSun.LEVELS.map((lv) => `<button class="btn sm ${lvFilter === lv ? 'primary' : ''}" data-lv="${lv}">${esc(lvLabel(lv))}</button>`).join('')}
+          </div>
+          <p class="note">${list.length}자</p><div class="hanja-grid">${list.slice(0, 400).map((h) => `
           <div class="hcell"><div class="c">${esc(h.c)}</div>
             <div class="m">${esc(h.hun)} ${esc(h.eum)}</div>
-            <div class="meta"><span class="lvl">${esc(h.lv)}급</span> 부수 ${esc(h.rad)}${h.str ? ' · ' + h.str + '획' : ''}${h.write ? ' · 쓰기' : ''}${h.variant ? ' · 약자 ' + esc(h.variant) : ''}</div>
+            <div class="meta"><span class="lvl">${esc(lvLabel(h.lv))}</span> ${esc(h.rad)}부 ${h.resid != null ? h.resid + '획' : ''}${h.str ? ' · 총' + h.str + '획' : ''}${h.wtier === 1 ? ' · 쓰기' : h.wtier === 2 ? ' · 쓰기확장' : ''}${h.variant ? ' · 약자 ' + esc(h.variant) : ''}</div>
             ${h.words[0] ? `<div class="meta">${esc(h.words[0].w)}(${esc(h.words[0].r)})</div>` : ''}
-          </div>`).join('')}</div>${list.length > 400 ? '<p class="note">상위 400자만 표시했습니다. 검색으로 좁혀 보세요.</p>' : ''}`;
+          </div>`).join('')}</div>${list.length > 400 ? '<p class="note">상위 400자만 표시했습니다. 급수 필터나 검색으로 좁혀 보세요.</p>' : ''}`;
       } else if (tab === 'idioms') {
         const list = D.idioms.filter((i) => hit(i.idiom) || hit(i.reading) || hit(i.meaning));
         body = `<p class="note">${list.length}개</p><div class="scroll"><table>
@@ -972,7 +989,8 @@
         <input class="search" id="q" placeholder="한자·독음·뜻으로 검색" value="${esc(q)}">
         ${body}`);
 
-      $$('[data-tab]').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; render(); }; });
+      $$('[data-tab]').forEach((b) => { b.onclick = () => { tab = b.dataset.tab; lvFilter = ''; render(); }; });
+      $$('[data-lv]').forEach((b) => { b.onclick = () => { lvFilter = b.dataset.lv; render(); }; });
       const inp = $('#q');
       inp.oninput = () => { q = inp.value; const pos = inp.selectionStart; render(); const n = $('#q'); n.focus(); n.setSelectionRange(pos, pos); };
     }
@@ -989,6 +1007,16 @@
           <label class="field"><span>학습 시작일</span><input type="date" id="start" value="${esc(s.startDate)}"></label>
           <label class="field"><span>시험일 (D-day 기준)</span><input type="date" id="exam" value="${esc(s.examDate)}"></label>
           <label class="field"><span>평일 학습 시간(분)</span><input type="number" id="min" min="30" max="360" value="${s.dailyMinutes}"></label>
+          <label class="field"><span>이미 아는 급수 — 이 급수까지는 신규 배정에서 뺍니다</span>
+            <select id="known">
+              <option value=""${s.knownLevel ? '' : ' selected'}>제외 없음 (8급부터 전부)</option>
+              ${AiSun.LEVELS.slice(0, -1).map((lv) => {
+                const l = AiSun.curriculum.load(lv);
+                return `<option value="${lv}"${s.knownLevel === lv ? ' selected' : ''}>${esc(AiSun.LEVEL_LABEL[lv])}까지 앎 — 신규 ${l.total.toLocaleString()}장 · 하루 ${l.perDay}장</option>`;
+              }).join('')}
+            </select></label>
+          <p class="note">1급 응시자에게 8급부터 3,500자를 다시 배정하는 건 시간 낭비입니다.
+            보유 급수를 고르면 그 위 급수만 신규로 배정됩니다.</p>
           <button class="btn primary" id="save">저장</button>
           <p class="note">시작일을 바꾸면 주차 계산과 신규 배정이 다시 정렬됩니다. 이미 학습한 카드의 복습 일정은 그대로입니다.</p>
         </div></section>
@@ -1018,13 +1046,18 @@
           <tr><th>합격기준</th><td>160점 이상 (80%)</td></tr>
         </tbody></table>
         <p class="note">시험 일정과 출제 기준은 시행처 공고가 최종입니다. 응시 전 <b>한국어문회 홈페이지</b>에서 확인하세요.</p>
+        <p class="note">배정한자 3,500자의 급수·훈음·부수·획수는 <b>한국어문회</b>가 공개한 급수별 배정한자 자료를 따랐고,
+          그 저작권은 한국어문회에 있습니다. 대표 어휘는 libhangul 한자사전(BSD)에서, 부수·획수 교차 검증은
+          Unicode Unihan 자료를 썼습니다. 자세한 출처는 저장소의 <span class="kbd">docs/05-원본-데이터.md</span>를 보세요.</p>
       </div></section>`);
 
     $('#save').onclick = () => {
       s.startDate = $('#start').value || s.startDate;
       s.examDate = $('#exam').value || s.examDate;
       s.dailyMinutes = U.clamp(+$('#min').value || 110, 30, 360);
+      s.knownLevel = $('#known').value;
       AiSun.store.saveNow();
+      AiSun.curriculum.refresh();     // 배정 대상이 바뀌었으므로 다시 계산한다
       AiSun.render();
       alert('저장했습니다.');
     };
@@ -1038,13 +1071,13 @@
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     };
     $('#import').onclick = () => {
-      try { AiSun.store.import($('#io').value); alert('불러왔습니다.'); AiSun.render(); }
+      try { AiSun.store.import($('#io').value); AiSun.curriculum.refresh(); alert('불러왔습니다.'); AiSun.render(); }
       catch (e) { alert('불러오기 실패: ' + e.message); }
     };
     $('#reset').onclick = () => {
       if (!confirm('모든 학습 기록이 지워집니다. 계속할까요?')) return;
       if (!confirm('되돌릴 수 없습니다. 정말 초기화할까요?')) return;
-      AiSun.store.reset(); AiSun.render();
+      AiSun.store.reset(); AiSun.curriculum.refresh(); AiSun.render();
     };
   };
 })(window);

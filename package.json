@@ -7,6 +7,8 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "test": "node tools/selftest.mjs",
+    "uitest": "node tools/uitest.mjs",
+    "import": "node tools/import-sources.mjs",
     "start": "node -e \"console.log('index.html 을 브라우저로 여세요. 서버가 필요 없습니다.')\""
   },
   "engines": { "node": ">=18" },

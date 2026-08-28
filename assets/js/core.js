@@ -83,6 +83,8 @@
         startDate: today,
         examDate: U.addDays(today, 182),   // 26주
         answerMode: 'auto',                // auto | choice — 학습 세션 채점 방식
+        // 이미 아는 급수. 이 급수까지는 신규 배정에서 빼고 드릴·모의고사 범위로만 남긴다.
+        knownLevel: '4',
         dailyMinutes: 110,
         soundless: true,
       },
