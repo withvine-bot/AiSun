@@ -1022,10 +1022,11 @@
         </div></section>
 
         <section><h2>백업</h2><div class="card">
-          <p class="note">학습 기록은 이 브라우저의 저장소에만 있습니다. 브라우저 데이터를 지우면 사라지므로
-            주 1회는 내보내 두세요.</p>
+          <p class="note">학습 기록은 <b>이 브라우저에만</b> 저장됩니다. 서버로 올라가지 않으므로 기기를 바꾸거나
+            브라우저 데이터를 지우면 사라집니다. 주 1회는 내보내 두세요.</p>
           <div class="row" style="margin:10px 0">
             <button class="btn" id="export">내보내기</button>
+            <button class="btn" id="copy">클립보드로 복사</button>
             <button class="btn" id="download">파일로 저장</button>
           </div>
           <textarea class="io" id="io" placeholder="여기에 백업 JSON을 붙여 넣고 [불러오기]를 누르세요"></textarea>
@@ -1062,11 +1063,48 @@
       alert('저장했습니다.');
     };
     $('#export').onclick = () => { $('#io').value = AiSun.store.export(); };
-    $('#download').onclick = () => {
-      const blob = new Blob([AiSun.store.export()], { type: 'application/json' });
+
+    $('#copy').onclick = async () => {
+      const json = AiSun.store.export();
+      $('#io').value = json;
+      try {
+        await navigator.clipboard.writeText(json);
+        $('#copy').textContent = '복사했습니다';
+        setTimeout(() => { const b = $('#copy'); if (b) b.textContent = '클립보드로 복사'; }, 2000);
+      } catch (e) {
+        $('#io').select();
+        alert('자동 복사가 막혀 있습니다. 아래 칸의 내용을 직접 복사하세요.');
+      }
+    };
+
+    /* 파일 저장 경로는 실행 환경에 따라 다르다.
+     * 웹에 게시된 화면에서는 페이지가 직접 내려받을 수 없어 호스트가 중개하고,
+     * 파일을 그냥 열었을 때는 평범한 브라우저 다운로드를 쓴다. */
+    $('#download').onclick = async () => {
+      const json = AiSun.store.export();
+      const filename = `aisun-backup-${U.today()}.json`;
+      const hosted = !!(window.claude && typeof window.claude.use === 'function');
+
+      if (hosted) {
+        let dl = null;
+        try { dl = await window.claude.use('downloads'); } catch (e) { dl = null; }
+        if (!dl) {
+          $('#io').value = json;
+          alert('이 화면에서는 파일로 저장할 수 없습니다. [클립보드로 복사]를 쓰거나 아래 칸의 내용을 옮겨 두세요.');
+          return;
+        }
+        try { await dl.save({ filename, data: json }); }
+        catch (e) {
+          if (e && e.code === 'declined') return;          // 사용자가 취소한 것이므로 조용히 끝낸다
+          alert('저장하지 못했습니다: ' + ((e && e.message) || '알 수 없는 오류'));
+        }
+        return;
+      }
+
+      const blob = new Blob([json], { type: 'application/json' });
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      a.download = `aisun-backup-${U.today()}.json`;
+      a.download = filename;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 1000);
     };

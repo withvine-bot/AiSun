@@ -29,6 +29,12 @@ const ok = (c, l, x) => { if (c) { pass++; console.log('  ✓ ' + l); } else { f
 
 const browser = await chromium.launch();
 const page = await browser.newPage();
+
+// 계획은 요일에 따라 달라진다 — 토요일엔 신규 배정이 없고 종합테스트가 잡힌다.
+// 언제 돌려도 같은 결과가 나오도록 수요일로 시계를 고정한다.
+// setFixedTime 은 Date 만 고정하고 타이머는 실제로 돌려 모의고사 시간 검증이 유지된다.
+const FAKE_NOW = new Date('2026-09-02T09:00:00');   // 수요일
+await page.clock.setFixedTime(FAKE_NOW);
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
@@ -49,6 +55,7 @@ for (const [route, expect] of [['dashboard','대시보드'],['today','오늘 학
   const h = await page.locator('h1.page').first().textContent();
   ok(h.includes(expect), `#/${route} → "${h.trim()}"`);
 }
+ok((await page.locator('h1.page').first().textContent()).length > 0, '고정 시계에서 계획이 수요일로 잡힘');
 
 console.log('\n■ 26주 플랜 표');
 await page.goto(ROOT + '#/plan'); await page.waitForTimeout(150);
@@ -163,6 +170,16 @@ await page.goto(ROOT + '#/settings'); await page.waitForTimeout(150);
 await page.locator('#export').click();
 const dump = await page.locator('#io').inputValue();
 ok(dump.length > 100 && dump.includes('"srs"'), `백업 JSON 생성 (${dump.length} bytes)`);
+ok(await page.locator('#copy').count() === 1, '클립보드 복사 버튼 존재 — 어느 환경에서도 백업을 꺼낼 수 있다');
+// 게시된 화면에서는 페이지가 직접 내려받을 수 없어 호스트 중개를 쓴다.
+// window.claude 가 있는데 downloads 를 못 쓰면 안내로 빠져야 한다.
+await page.evaluate(() => { window.claude = { use: async () => null }; });
+let alerted = '';
+page.once('dialog', (d) => { alerted = d.message(); d.accept(); });
+await page.locator('#download').click();
+await page.waitForTimeout(300);
+ok(alerted.includes('클립보드'), `게시 환경에서 저장이 막히면 대안을 안내 ("${alerted.slice(0, 30)}…")`);
+await page.evaluate(() => { delete window.claude; });
 
 ok(errors.length === 0, '콘솔 오류 없음', errors.slice(0, 3).join(' | '));
 console.log(`\n결과: ${pass}건 통과, ${fail}건 실패\n`);

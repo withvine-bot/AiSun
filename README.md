@@ -6,11 +6,16 @@
 ```
 git clone <이 저장소>
 cd AiSun
-node tools/build.mjs      # 데이터 빌드 (최초 1회, 이미 빌드본이 포함되어 있음)
 open index.html           # 또는 파일을 더블클릭
 ```
 
+**파일 하나로 들고 다니려면** `npm run bundle` 을 실행하세요. CSS·스크립트·데이터를
+모두 인라인한 `dist/aisun.html` 한 개가 나옵니다. USB에 넣든 메일에 첨부하든
+그 파일만 있으면 어디서든 그대로 돌아갑니다.
+
 학습 기록은 브라우저의 로컬 저장소에 남습니다. 서버로 나가는 데이터는 없습니다.
+그만큼 기기를 바꾸거나 브라우저 데이터를 지우면 사라지므로, **설정 → 백업**에서
+주기적으로 내보내 두세요.
 
 ---
 
@@ -155,7 +160,8 @@ assets/data/corpus.js      빌드 산출물 (직접 편집 금지)
 tools/import-sources.mjs   공개 원본 3종 병합 → TSV 재생성 (멱등)
 tools/build.mjs            TSV → JS 빌드
 tools/selftest.mjs         엔진 검증 (58건)
-tools/uitest.mjs           실제 브라우저 검증 (33건, playwright 필요)
+tools/uitest.mjs           실제 브라우저 검증 (36건, playwright 필요)
+tools/bundle.mjs           단일 HTML 파일로 번들
 ```
 
 ## 개발
@@ -163,7 +169,8 @@ tools/uitest.mjs           실제 브라우저 검증 (33건, playwright 필요)
 ```
 npm run build     # data/src/*.tsv → assets/data/corpus.js
 npm test          # 엔진 검증 58건
-npm run uitest    # 브라우저 검증 33건 (playwright 필요)
+npm run uitest    # 브라우저 검증 36건 (playwright 필요)
+npm run bundle    # 단일 파일 dist/aisun.html 생성
 npm run import    # 공개 원본에서 배정한자 재생성 — docs/05 참조
 ```
 

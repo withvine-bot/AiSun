@@ -5,11 +5,19 @@
   --radius:12px; --shadow:0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.04);
   --han:"Noto Serif KR","Apple SD Gothic Neo","Malgun Gothic","Nanum Myeongjo",serif;
 }
+/* 테마는 세 가지 상태를 가진다. 명시 선택은 루트에 data-theme 를 찍고,
+   기본값인 '시스템 설정'은 아무것도 찍지 않아 prefers-color-scheme 만 남는다.
+   그래서 어두운 팔레트를 두 번 정의한다 — 아래 두 블록은 항상 같은 값을 유지할 것. */
 @media (prefers-color-scheme:dark){
-  :root{ --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --dim:#9d998f; --line:#33323a;
+  :root:not([data-theme="light"]){
+         --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --dim:#9d998f; --line:#33323a;
          --accent:#e07a7a; --accent-soft:#2c2126; --ok:#5fbf8f; --warn:#d9a441; --bad:#e57373;
          --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3); }
 }
+:root[data-theme="dark"]{
+         --bg:#16161a; --panel:#1e1e23; --ink:#eceae5; --dim:#9d998f; --line:#33323a;
+         --accent:#e07a7a; --accent-soft:#2c2126; --ok:#5fbf8f; --warn:#d9a441; --bad:#e57373;
+         --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.3); }
 *{box-sizing:border-box}
 html,body{margin:0;padding:0}
 body{
@@ -81,6 +89,8 @@ section > h2 .tag{font-size:11px;background:var(--accent-soft);color:var(--accen
 .btn.ghost{background:transparent}
 .btn.sm{padding:5px 10px;font-size:12.5px;border-radius:7px}
 .btn:disabled{opacity:.45;cursor:not-allowed}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 .btn.done{border-color:var(--ok);color:var(--ok)}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .row.end{justify-content:flex-end}
