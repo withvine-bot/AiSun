@@ -19,6 +19,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2);
 const arg = (name) => { const i = argv.indexOf('--' + name); return i >= 0 ? argv[i + 1] : null; };
 
+const COMPAT = arg('compat') || (arg('dict') ? resolve(dirname(arg('dict')), 'compat-table.txt') : null);
 const GRADES = arg('grades');
 const DICT = arg('dict');
 const UNIHAN = arg('unihan');
@@ -38,6 +39,24 @@ const WRITE_UPTO = LV_IDX['3급'];      // 3급까지 누계 1,817자 = 확정 �
 const WRITE_EXT = LV_IDX['2급'];       // 2급 538자 = 확장 쓰기 대상 (공식 2,005자를 덮기 위함)
 
 const isHanja = (c) => c >= '一' && c <= '鿿';
+
+/* ── 호환 한자 정규화 ──
+ * 공식 자료는 훈음이 둘 이상인 아홉 글자(金 車 樂 不 宅 率 塞 串 泌)를 CJK 호환 한자
+ * 영역(U+F900~)에 넣어 등재한다. 코드가 다르면 같은 글자로 보이는데도 검색·채점·어휘
+ * 연결이 전부 어긋난다 — 金은 8급, 가장 먼저 배우는 글자다. 통합 코드로 되돌린다.
+ */
+const compatMap = new Map();
+if (COMPAT && existsSync(COMPAT)) {
+  for (const line of readFileSync(COMPAT, 'utf8').split('\n')) {
+    const m = line.trim().split(/\s+/);
+    if (m.length < 2) continue;
+    const from = parseInt(m[0], 16), to = parseInt(m[1], 16);
+    if (Number.isFinite(from) && Number.isFinite(to)) {
+      compatMap.set(String.fromCodePoint(from), String.fromCodePoint(to));
+    }
+  }
+}
+const unify = (s) => (s ? [...s].map((c) => compatMap.get(c) || c).join('') : s);
 
 /* ── 1. 한국어문회 급수 CSV ── */
 function parseCsv(text) {
@@ -84,21 +103,25 @@ function parseMeaning(s) {
 const official = new Map();
 for (const r of parseCsv(readFileSync(GRADES, 'utf8'))) {
   const lv = (r.level || '').trim();
-  const c = (r.hanja || '').trim();
+  const c = unify((r.hanja || '').trim());
   if (!c || !(lv in LV_IDX)) continue;          // 특급·특급Ⅱ는 1급 범위 밖이라 제외
   const readings = parseMeaning(r.meaning || '');
   if (!readings.length) continue;
   official.set(c, {
     c, lv, lvIdx: LV_IDX[lv],
+    compat: c !== (r.hanja || '').trim(),
     hun: readings[0].hun, eum: readings[0].eum, note: readings[0].note, raw: readings[0].raw,
     alt: readings.slice(1),
-    rad: (r.radical || '').trim(),
+    rad: unify((r.radical || '').trim()),
     resid: parseInt(r.strokes, 10) || null,      // 부수를 뺀 획수
     str: parseInt(r.total_strokes, 10) || null,  // 총획
     mainSound: (r.main_sound || '').trim(),
   });
 }
-console.log(`한국어문회 배정한자 ${official.size}자 (8급~1급)`);
+const unified = compatMap.size
+  ? [...official.values()].filter((o) => o.compat).length : 0;
+console.log(`한국어문회 배정한자 ${official.size}자 (8급~1급)` +
+  (compatMap.size ? ` · 호환 한자 ${unified}자를 통합 코드로 정규화` : ' · 경고: compat-table 을 못 찾아 정규화하지 않음'));
 if (official.size !== 3500) {
   console.error(`\n오류: 8급~1급 누계는 3,500자여야 한다. ${official.size}자만 읽혔다 — 원본이나 파서를 확인하라.`);
   process.exit(1);
@@ -115,7 +138,7 @@ for (const line of readFileSync(DICT, 'utf8').split('\n')) {
   const p = line.split(':');
   if (p.length < 3) continue;
   const read = p[0].trim();
-  const w = p[1].trim();
+  const w = unify(p[1].trim());
   const desc = p.slice(2).join(':').trim();
   if (!w) continue;
 
@@ -152,7 +175,8 @@ if (FREQ && existsSync(FREQ)) {
     const w = line.slice(0, i).trim();
     const v = parseInt(line.slice(i + 1), 10);
     if (!w || !Number.isFinite(v)) continue;
-    if (v > (freq.get(w) || 0)) freq.set(w, v);
+    const key = unify(w);
+    if (v > (freq.get(key) || 0)) freq.set(key, v);
   }
   console.log(`어휘 빈도 ${freq.size}개 (${FREQ.split('/').pop()})`);
 } else {
@@ -218,16 +242,30 @@ function pickWords(c, keep) {
   for (const w of keep) { out.push(w); used.add(w.w); }   // 진짜 뜻풀이가 달린 수기 어휘 우선
 
   const levelCost = (s) => [...s].reduce((n, ch) => n + (official.get(ch)?.lvIdx ?? 99), 0);
-  const cands = (wordsByHanja.get(c) || [])
-    .filter((x) => !used.has(x.w))
-    .sort((a, b) =>
-      freqOf(b.w) - freqOf(a.w)                                  // 상용어부터
-      || levelCost(a.w) - levelCost(b.w)                         // 빈도가 같으면 쉬운 글자 조합
-      || (a.w[0] === c ? 0 : 1) - (b.w[0] === c ? 0 : 1));       // 그다음 첫 글자로 쓰인 것
-  for (const x of cands) {
-    if (out.length >= 3) break;
-    out.push({ w: x.w, r: x.r, d: composeGloss(x.w) });
-  }
+  // 어휘에서 가장 어려운 글자의 급수 — 이 값이 낮을수록 낮은 급수 시험에 낼 수 있다
+  const hardest = (s) => Math.max(...[...s].map((ch) => official.get(ch)?.lvIdx ?? 99));
+
+  const pool = (wordsByHanja.get(c) || []).filter((x) => !used.has(x.w));
+  const take = (list, n) => {
+    for (const x of list) {
+      if (out.length >= n) break;
+      if (used.has(x.w)) continue;
+      used.add(x.w);
+      out.push({ w: x.w, r: x.r, d: composeGloss(x.w) });
+    }
+  };
+
+  // 대표 어휘 3개 — 빈도순
+  take(pool.slice().sort((a, b) =>
+    freqOf(b.w) - freqOf(a.w)
+    || levelCost(a.w) - levelCost(b.w)
+    || (a.w[0] === c ? 0 : 1) - (b.w[0] === c ? 0 : 1)), 3);
+
+  // 쉬운 어휘 2개 — 낮은 급수 시험은 출제 범위가 좁아 상용어만으로는 문항을 못 만든다.
+  // 구성 글자가 모두 낮은 급수인 어휘를 따로 확보해 둔다.
+  take(pool.slice().sort((a, b) =>
+    hardest(a.w) - hardest(b.w) || freqOf(b.w) - freqOf(a.w)), 5);
+
   return out;
 }
 

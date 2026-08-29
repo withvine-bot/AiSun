@@ -8,7 +8,8 @@
   const ROUTES = [
     ['dashboard', '대시보드'],
     ['today', '오늘 학습'],
-    ['plan', '26주 플랜'],
+    ['roadmap', '로드맵'],
+    ['radicals', '부수'],
     ['drill', '유형 드릴'],
     ['exam', '모의고사'],
     ['wrong', '오답노트'],
@@ -33,22 +34,27 @@
 
   function renderHeader() {
     const st = AiSun.store.state;
-    const p = AiSun.curriculum.plan();
-    const prog = AiSun.curriculum.progress();
-    const proj = AiSun.curriculum.projectedScore();
+    const C = AiSun.curriculum;
+    if (!st.settings.onboarded) {
+      document.getElementById('hdr-sub').textContent = '시작 단계를 고르세요';
+      document.getElementById('hdr-stats').innerHTML = '';
+      return;
+    }
+    const p = C.plan();
+    const road = C.roadmap();
+    const remaining = road.rows.filter((r) => r.inPath && !r.cleared).length;
     const wrongN = Object.keys(st.wrong).length;
 
     document.getElementById('hdr-sub').textContent =
-      p.beforeStart ? `시작 예정 · ${st.settings.startDate}`
-        : `${Math.min(p.week, AiSun.curriculum.WEEKS)}주차 / ${AiSun.curriculum.WEEKS}주 · ${p.phase.no}단계 ${p.phase.name}`;
+      `${C.label(p.stageKey)} · 목표 ${C.label(st.settings.targetLevel)}까지 ${remaining}칸`;
 
     document.getElementById('hdr-stats').innerHTML = [
-      `<span class="chip hot">${p.dDay >= 0 ? 'D-' + p.dDay : 'D+' + (-p.dDay)}</span>`,
+      `<span class="chip hot">${U.esc(C.label(p.stageKey))}</span>`,
       `<span class="chip">복습 <b>${p.dueIds.length}</b></span>`,
-      `<span class="chip">신규 <b>${p.newCards.length + p.backlog.length}</b></span>`,
+      `<span class="chip">새 카드 <b>${p.newCards.length}</b></span>`,
       `<span class="chip">오답 <b>${wrongN}</b></span>`,
-      `<span class="chip">진도 <b>${prog.pct}%</b></span>`,
-      `<span class="chip">예상 <b>${proj.projected == null ? '—' : proj.projected}</b>점</span>`,
+      `<span class="chip">단계 <b>${p.progress.pct}%</b></span>`,
+      `<span class="chip">약 <b>${road.totalMonths}</b>개월</span>`,
     ].join('');
   }
 
@@ -82,6 +88,7 @@
     AiSun.store.load();
     AiSun.curriculum.init(data);
     AiSun.quiz.init(data);
+    AiSun.curriculum.settleGates();
 
     global.addEventListener('hashchange', render);
     global.addEventListener('beforeunload', () => AiSun.store.saveNow());

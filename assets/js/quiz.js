@@ -28,6 +28,9 @@
         data.idioms.flatMap((i) => [...i.idiom]).map((c) => ({ c })), (x) => x.c
       ).map((x) => x.c),
       meanings: data.idioms.map((i) => i.meaning),
+      radNames: data.radicals.map((r) => r.name).filter(Boolean),
+      radHunEum: data.radicals.map((r) => `${r.hun} ${r.eum}`),
+      strokes: [...new Set(data.hanja.map((h) => h.str).filter((n) => n > 0))].sort((a, b) => a - b),
     };
   }
 
@@ -47,6 +50,16 @@
 
   const noop = () => null;
 
+  /** 지문에 쓸 수 있는 어휘인지 — 구성 글자가 모두 출제 범위 안이어야 한다 */
+  function inScope(text, scope) {
+    if (!scope) return true;
+    for (const ch of String(text)) {
+      if (ch >= '一' && ch <= '鿿' && !scope.has(ch)) return false;
+    }
+    return true;
+  }
+  const scopedWords = (words, scope) => (words || []).filter((w) => inScope(w.w, scope));
+
   /* ─────────── 유형별 생성기 ───────────
    * 각 생성기는 (card, rand, opts) 를 받아 문항 또는 null 을 돌려준다.
    * null 이면 그 카드로는 해당 유형을 만들 수 없다는 뜻이다.
@@ -54,12 +67,20 @@
   const GEN = {
 
     /* 讀音 50문항 — 한자어를 보고 한글 독음을 쓴다 */
-    '독음'(card, rand) {
+    '독음'(card, rand, opts) {
+      const scope = opts && opts.charScope;
       let w = null;
-      if (card.kind === 'hanja' && card.ref.words.length) w = U.pick(card.ref.words, rand);
-      else if (card.kind === 'idiom') w = { w: card.ref.idiom, r: card.ref.reading, d: card.ref.meaning };
-      else if (card.kind === 'tone') w = { w: card.ref.word, r: card.ref.reading, d: card.ref.meaning };
-      else if (card.kind === 'homo') { const x = U.pick(card.ref.words, rand); w = { w: x.w, r: card.ref.reading, d: x.d }; }
+      if (card.kind === 'hanja') {
+        const ws = scopedWords(card.ref.words, scope);
+        if (ws.length) w = U.pick(ws, rand);
+      } else if (card.kind === 'idiom') {
+        if (inScope(card.ref.idiom, scope)) w = { w: card.ref.idiom, r: card.ref.reading, d: card.ref.meaning };
+      } else if (card.kind === 'tone') {
+        if (inScope(card.ref.word, scope)) w = { w: card.ref.word, r: card.ref.reading, d: card.ref.meaning };
+      } else if (card.kind === 'homo') {
+        const ws = card.ref.words.filter((x) => inScope(x.w, scope));
+        if (ws.length) { const x = U.pick(ws, rand); w = { w: x.w, r: card.ref.reading, d: x.d }; }
+      }
       if (!w) return null;
       return {
         type: '독음', cardId: card.id, mode: 'input',
@@ -92,9 +113,14 @@
 
     /* 漢字쓰기 40문항 — 배점 최대. 한글 어휘를 한자로 옮긴다 */
     '한자쓰기'(card, rand, opts) {
+      const scope = opts && opts.charScope;
       let w = null;
-      if (card.kind === 'hanja' && card.ref.words.length) w = U.pick(card.ref.words, rand);
-      else if (card.kind === 'tone') w = { w: card.ref.word, r: card.ref.reading, d: card.ref.meaning };
+      if (card.kind === 'hanja') {
+        const ws = scopedWords(card.ref.words, scope);
+        if (ws.length) w = U.pick(ws, rand);
+      } else if (card.kind === 'tone' && inScope(card.ref.word, scope)) {
+        w = { w: card.ref.word, r: card.ref.reading, d: card.ref.meaning };
+      }
       if (!w) return null;
       // 오답 보기는 글자 수가 같은 다른 한자어에서 뽑아야 변별이 된다
       const pool = IDX.words.filter((x) => x.w.length === w.w.length).map((x) => x.w);
@@ -142,13 +168,15 @@
     },
 
     /* 뜻풀이 10문항 */
-    '뜻풀이'(card, rand) {
+    '뜻풀이'(card, rand, opts) {
+      const scope = opts && opts.charScope;
       let stem = null, ans = null, pool = null, read = '';
       if (card.kind === 'idiom') {
+        if (!inScope(card.ref.idiom, scope)) return null;
         stem = card.ref.idiom; ans = card.ref.meaning; read = card.ref.reading;
         pool = IDX.meanings;
       } else if (card.kind === 'hanja') {
-        const w = card.ref.words.find((x) => x.d);
+        const w = scopedWords(card.ref.words, scope).find((x) => x.d);
         if (!w) return null;
         stem = w.w; ans = w.d; read = w.r;
         pool = IDX.words.filter((x) => x.d).map((x) => x.d);
@@ -164,11 +192,14 @@
     },
 
     /* 同音異義語 10문항 */
-    '동음이의어'(card, rand) {
+    '동음이의어'(card, rand, opts) {
       if (card.kind !== 'homo') return null;
       const m = card.ref;
-      const target = U.pick(m.words, rand);
-      const others = m.words.filter((x) => x.w !== target.w).map((x) => x.w);
+      const scope = opts && opts.charScope;
+      const usable = m.words.filter((x) => inScope(x.w, scope));
+      if (usable.length < 2) return null;
+      const target = U.pick(usable, rand);
+      const others = usable.filter((x) => x.w !== target.w).map((x) => x.w);
       // 같은 독음의 다른 한자어를 우선 보기로 쓴다 — 이게 실제 시험의 함정 구조다
       const pool = others.concat(
         (IDX.wordsByReading[m.reading] || []).map((x) => x.w),
@@ -239,6 +270,64 @@
         explain: `${a.full} ↔ ${a.abbr} (${a.hun} ${a.eum})`,
       };
     },
+
+    /* 획수 — 실제 시험의 筆順 자리를 대신한다. 획을 셀 줄 알아야 필순도 익힐 수 있다 */
+    '획수'(card, rand) {
+      const src = card.kind === 'hanja' ? card.ref : card.kind === 'radical' ? card.ref : null;
+      if (!src || !src.str) return null;
+      const near = [src.str - 2, src.str - 1, src.str + 1, src.str + 2, src.str + 3].filter((n) => n > 0);
+      const isRad = card.kind === 'radical';
+      return {
+        type: '획수', cardId: card.id, mode: 'choice',
+        q: isRad ? '다음 部首는 몇 획인가?' : '다음 漢字의 總畫(총획)은 몇 획인가?',
+        stem: src.c, hint: `${src.hun} ${src.eum}`,
+        answer: String(src.str), accept: [String(src.str), src.str + '획'],
+        choices: choices(String(src.str), near.map(String), rand),
+        explain: isRad
+          ? `${src.c}(${src.name}) — ${src.str}획`
+          : `${src.c} — ${src.rad}부 ${src.resid != null ? src.resid + '획' : ''}, 총 ${src.str}획`,
+      };
+    },
+
+    /* 部首 訓音 — 입문 단계의 주력 문항 */
+    '부수훈음'(card, rand) {
+      if (card.kind !== 'radical') return null;
+      const r = card.ref;
+      const ans = `${r.hun} ${r.eum}`;
+      return {
+        type: '부수훈음', cardId: card.id, mode: 'input',
+        q: '다음 部首의 訓과 音을 쓰시오.',
+        stem: r.c,
+        hint: (r.varNames || []).length
+          ? `자리에 따라 ${r.varNames.map((v) => v.v + (v.n ? `(${v.n})` : '')).join(' · ')} 로도 쓴다` : '',
+        answer: ans, accept: [ans, r.hun + r.eum, r.name].concat((r.varNames || []).map((v) => v.n).filter(Boolean)),
+        choices: choices(ans, IDX.radHunEum, rand),
+        explain: `${r.c} ${ans} — ${r.name}, ${r.str}획, 주로 ${r.pos}에 놓인다`
+          + ((r.varNames || []).length ? ` · 변형 ${r.varNames.map((v) => v.v + (v.n ? `(${v.n})` : '')).join(' ')}` : '')
+          + (r.examples.length ? ` · 예) ${r.examples.map((e) => e.c).join(' ')}` : ''),
+      };
+    },
+
+    /* 이 부수를 쓰는 한자 고르기 — 부수 지식을 실제 글자와 잇는다 */
+    '부수찾기'(card, rand, opts) {
+      if (card.kind !== 'radical') return null;
+      const r = card.ref;
+      if (!r.examples || !r.examples.length) return null;
+      const target = U.pick(r.examples, rand);
+      const scope = opts && opts.charScope;
+      const others = D.hanja
+        .filter((h) => h.rad && h.rad !== r.c && (!scope || scope.has(h.c)))
+        .map((h) => h.c);
+      return {
+        type: '부수찾기', cardId: card.id, mode: 'choice',
+        q: `다음 중 部首가 '${r.c}(${r.hun} ${r.eum})'인 漢字는?`,
+        stem: '',
+        answer: target.c, accept: [target.c],
+        choices: choices(target.c, others, rand),
+        explain: `${target.c}(${target.hun} ${target.eum}) 은 ${r.c}부에 속한다`
+          + (r.examples.length > 1 ? ` · 같은 부수: ${r.examples.map((e) => e.c).join(' ')}` : ''),
+      };
+    },
   };
 
   function pairQuestion(card, rand, type, label) {
@@ -263,7 +352,8 @@
 
   /* 카드 종류별로 만들 수 있는 유형 */
   const TYPES_FOR_KIND = {
-    hanja: ['훈음', '독음', '부수', '뜻풀이', '한자쓰기'],
+    radical: ['부수훈음', '부수찾기', '획수'],
+    hanja: ['훈음', '독음', '부수', '획수', '뜻풀이', '한자쓰기'],
     idiom: ['완성형', '뜻풀이', '독음'],
     pair: ['반의어', '유의어'],
     homo: ['동음이의어', '독음'],
@@ -312,10 +402,11 @@
         if (type === '한자쓰기') return false;
         return (TYPES_FOR_KIND[c.kind] || []).includes(type);
       });
+      // 출제 범위는 반드시 지킨다. 8급 시험에 1급 한자가 나오면 시험이 아니다.
+      // 범위 안에 재료가 모자라면 모자란 채로 돌려주고, 채우는 건 exam.build 가 판단한다.
       if (opts.pool) {
         const allow = new Set(opts.pool);
-        const narrowed = pool.filter((c) => allow.has(c.id));
-        if (narrowed.length >= Math.min(n, 4)) pool = narrowed;
+        pool = pool.filter((c) => allow.has(c.id));
       }
       if (!pool.length) return [];
 
@@ -336,7 +427,8 @@
         const q = Q.make(type, c, rand, opts);
         if (q) { out.push(q); used.add(c.id); }
       }
-      // 카드가 모자라면 같은 카드로 다른 문항을 더 만들어 채운다
+      // 카드 수가 문항 수보다 적으면 같은 카드에서 다른 문항을 더 뽑아 채운다.
+      // (성어 15문항을 성어 카드 8장으로 만들어야 하는 하위 급수에서 필요하다.)
       let guard = 0;
       while (out.length < n && ranked.length && guard < n * 6) {
         guard += 1;

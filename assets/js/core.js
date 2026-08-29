@@ -1,4 +1,4 @@
-/* AiSun — 어문회 1급 6개월 합격플랜
+/* AiSun — 부수에서 1급까지
  * core.js : 공통 유틸 · 영속 저장소 · 간격반복(SRS) 엔진
  * 의존성 없음. file:// 로 열어도 동작하도록 전역 네임스페이스를 쓴다.
  */
@@ -81,20 +81,22 @@
       version: 1,
       settings: {
         startDate: today,
-        examDate: U.addDays(today, 182),   // 26주
+        // 사다리를 어디서 시작할지. 'radical' = 부수부터, 그 밖에는 급수 키('8','7II'…).
+        startStage: 'radical',
+        targetLevel: '1',
+        dailyNew: 20,                      // 하루 신규 카드 목표 — 진도와 기간 추정의 기준
         answerMode: 'auto',                // auto | choice — 학습 세션 채점 방식
-        // 이미 아는 급수. 이 급수까지는 신규 배정에서 빼고 드릴·모의고사 범위로만 남긴다.
-        knownLevel: '4',
-        dailyMinutes: 110,
-        soundless: true,
+        dailyMinutes: 60,
+        onboarded: false,
       },
+      stages: {},       // 단계키 -> {cleared, clearedAt}
       srs: {},          // cardId -> {ivl, ef, due, reps, lapses, last}
       wrong: {},        // cardId -> {n, lastTs, type}
       recent: [],       // 최근 풀이 {ts, type, ok} (최대 800)
       byType: {},       // type -> {c, t}
       daily: {},        // 'YYYY-MM-DD' -> {new, rev, drill, cards, c, t, min}
       checks: {},       // 'YYYY-MM-DD' -> {learn:bool, review:bool, drill:bool, test:bool}
-      exams: [],        // {ts, date, score, byType, elapsed, mode}
+      exams: [],        // {ts, date, levelKey, score, rate, pass, byType, elapsed}
       notes: {},        // cardId -> 사용자 메모
     };
   }

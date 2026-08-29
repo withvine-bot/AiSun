@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = resolve(ROOT, process.argv[2] || 'dist/aisun.html');
-const TITLE = '어문회 1급 합격플랜';
+const TITLE = '부수에서 1급까지';
 
 const html = readFileSync(resolve(ROOT, 'index.html'), 'utf8');
 

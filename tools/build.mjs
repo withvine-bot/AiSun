@@ -111,6 +111,66 @@ for (const [full, abbr, hun, eum] of rows('abbrev.tsv')) {
   abbrev.push({ id: 'a:' + full, full, abbr, hun: hun || '', eum: eum || '' });
 }
 
+// ---------- 급수 규격 ----------
+// 이 표가 모든 급수의 학습 범위·모의고사 구성·합격 판정을 결정한다.
+const levels = [];
+for (const [level, label, read, write, items, pass, minutes, types] of rows('levels.tsv')) {
+  if (!level) continue;
+  const spec = (types || '').split(';').map((x) => x.trim()).filter(Boolean).map((x) => {
+    const [k, n] = x.split(':');
+    return { k: (k || '').trim(), n: num(n) || 0 };
+  }).filter((x) => x.k && x.n > 0);
+  const sum = spec.reduce((a, b) => a + b.n, 0);
+  if (sum !== num(items)) warn(`${label}: 유형별 합계 ${sum} ≠ 총 문항 ${items}`);
+  levels.push({
+    lv: level, label,
+    read: num(read), write: num(write) || 0,
+    items: num(items), pass: num(pass), minutes: num(minutes),
+    passItems: Math.ceil((num(items) * num(pass)) / 100),
+    types: spec,
+  });
+}
+
+// ---------- 부수 ----------
+// 부수는 한자의 알파벳이다. 입문 단계 전체가 이 214자로 이뤄진다.
+const radicals = [];
+const radSeen = new Set();
+for (const [c, hun, eum, name, strokes, variants, pos, varNames] of rows('radicals.tsv')) {
+  if (!c || radSeen.has(c)) continue;
+  radSeen.add(c);
+  const vs = (variants || '').split(';').map((x) => x.trim()).filter(Boolean);
+  const vn = (varNames || '').split(';').map((x) => x.trim());
+  radicals.push({
+    id: 'r:' + c,
+    c, hun, eum,
+    name: name || '',
+    str: num(strokes),
+    // 변형은 이름과 짝지어 둔다 — 초보자는 氵를 '삼수변'이라는 이름으로 배운다
+    variants: vs,
+    varNames: vs.map((v, i) => ({ v, n: vn[i] || '' })),
+    pos: pos || '',
+    examples: [],        // 아래에서 배정한자로 채운다
+  });
+  if (vs.some((v, i) => !vn[i])) warn(`부수 ${c}: 변형 이름 누락`);
+}
+
+// 부수마다 그 부수를 쓰는 가장 쉬운 한자를 예로 붙인다 — 배우는 순간 바로 쓸모가 생긴다
+const LV_ORDER = levels.map((l) => l.lv);
+const lvRank = (lv) => { const i = LV_ORDER.indexOf(lv); return i < 0 ? 99 : i; };
+const byRad = new Map();
+for (const h of hanja) {
+  if (!h.rad) continue;
+  const list = byRad.get(h.rad) || [];
+  list.push(h);
+  byRad.set(h.rad, list);
+}
+for (const r of radicals) {
+  const list = (byRad.get(r.c) || []).slice().sort((a, b) => lvRank(a.lv) - lvRank(b.lv));
+  r.examples = list.slice(0, 4).map((h) => ({ c: h.c, hun: h.hun, eum: h.eum, lv: h.lv }));
+  r.count = list.length;
+}
+const radNoExample = radicals.filter((r) => !r.examples.length).length;
+
 // ---------- 장단음 ----------
 const tone = rows('tone.tsv')
   .filter(([w, r, t]) => w && r && (t === '장' || t === '단'))
@@ -137,9 +197,11 @@ const data = {
       homonyms: homonyms.length,
       abbrev: abbrev.length,
       tone: tone.length,
+      radicals: radicals.length,
+      levels: levels.length,
     },
   },
-  hanja, idioms, pairs, homonyms, abbrev, tone,
+  levels, radicals, hanja, idioms, pairs, homonyms, abbrev, tone,
 };
 
 mkdirSync(dirname(OUT), { recursive: true });
@@ -157,6 +219,8 @@ for (const h of hanja) byLevel[h.lv] = (byLevel[h.lv] || 0) + 1;
 console.log('급수별:', ['8','7II','7','6II','6','5II','5','4II','4','3II','3','2','1']
   .map((l) => `${l}급 ${byLevel[l] || 0}`).join(' · '));
 console.log(`어휘가 없는 한자 ${hanja.filter((h) => !h.words.length).length}자 (독음·쓰기 문항이 만들어지지 않음)`);
+console.log(`급수 규격 ${levels.length}개 · 부수 ${radicals.length}자` +
+  (radNoExample ? ` (배정한자에 용례가 없는 부수 ${radNoExample}자)` : ''));
 // 참고 지표 — 성어 문항 자체는 hanja.tsv 수록 여부와 무관하게 만들어진다.
 console.log(`참고: 구성 한자가 모두 hanja.tsv 에도 수록된 성어 ${idiomCovered}/${idioms.length}개`);
 if (problems.length) {
