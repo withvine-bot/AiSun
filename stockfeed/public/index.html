@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공시레이더 — 미국주식 공시 실시간 피드</title>
+<meta name="description" content="미국 SEC 공시를 실시간으로 포착해 한국어로 풀어 주고, 공시 뒤 주가 반응까지 추적합니다.">
+<meta name="theme-color" content="#f6f5f1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111418" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <a class="brand" href="#/"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".35"/><circle cx="12" cy="12" r="5" fill="none" stroke="currentColor" stroke-width="1.6" opacity=".6"/><path d="M12 12 19 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="1.8" fill="currentColor"/></svg><span>공시레이더</span></a>
+    <nav id="nav" aria-label="주 메뉴"></nav>
+    <p class="side-note">시세는 지연될 수 있으며, 이 서비스는 투자 권유가 아닙니다.</p>
+  </aside>
+  <div class="main">
+    <header class="top">
+      <a class="brand brand-m" href="#/"><span>공시레이더</span></a>
+      <div class="status"><span id="sess" class="sess"></span><span id="today" class="today"></span></div>
+      <div class="tools">
+        <div class="seg" role="group" aria-label="통화"><button data-cur="USD">$</button><button data-cur="KRW">₩</button></div>
+        <button id="theme" class="icon-btn" aria-label="테마 전환"></button>
+        <button id="search-btn" class="icon-btn" aria-label="종목 검색"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button>
+      </div>
+    </header>
+    <main id="view" tabindex="-1"></main>
+  </div>
+</div>
+<nav id="tabbar" class="tabbar" aria-label="주 메뉴"></nav>
+<dialog id="search" class="search">
+  <form method="dialog"><input id="search-input" type="search" placeholder="티커 또는 회사명 (예: NVDA, Tesla)" autocomplete="off" aria-label="종목 검색"><button class="icon-btn" aria-label="닫기">✕</button></form>
+  <ul id="search-results"></ul>
+</dialog>
+<div id="toasts" class="toasts" aria-live="polite"></div>
+<script type="module" src="/app.js"></script>
+</body>
+</html>

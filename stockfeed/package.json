@@ -1,0 +1,16 @@
+{
+  "name": "gongsi-radar",
+  "version": "0.1.0",
+  "description": "공시레이더 — 미국주식 SEC 공시 실시간 피드 · 한글 요약 · 주가 반응 추적",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.mjs",
+    "test": "node test/selftest.mjs"
+  },
+  "engines": { "node": ">=20" },
+  "optionalDependencies": {
+    "@anthropic-ai/sdk": "^1.9.0"
+  },
+  "license": "MIT"
+}

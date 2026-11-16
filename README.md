@@ -169,3 +169,7 @@ npm run import    # 공개 원본에서 배정한자 재생성 — docs/05 참�
 ```
 
 앱 자체는 의존성이 없습니다. Node 18+ 는 데이터 빌드에만, playwright 는 UI 테스트에만 필요합니다.
+
+## 함께 들어 있는 것
+
+`stockfeed/` — 한자 학습과 별개인 **공시레이더**(미국주식 SEC 공시 실시간 피드). 실행과 설명은 [stockfeed/README.md](stockfeed/README.md).
